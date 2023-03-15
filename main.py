@@ -2,6 +2,12 @@ import pdfminer.high_level  # for reading pdf to string
 import re  # for finding occurrences in string
 
 
+class Data:
+    def __init__(self, data_array, corresponding_line):
+        self.data_array = data_array
+        self.corresponding_line = corresponding_line
+
+
 def main():
     text = read_file()
     prepared_data_for_classification = corresponding_text_finding_algorithm(text)
@@ -25,12 +31,34 @@ def preprocess_text(text):
     text = remove_spaces_in_first_place_of_row(text)
     text = remove_newline_if_empty_line(text)
     text = transform_string_to_array_based_on_newlines(text)
+    text = shrink_lines_specified_for_same_data(text)
     return text
 
 
 def remove_unnecessary_symbols(text, symbols_to_remove):
     for symbol in symbols_to_remove:
         text = text.replace(symbol, ' ')
+    return text
+
+
+def shrink_lines_specified_for_same_data(text):
+    for i in range(len(text)):
+        text[i] = text[i].strip()
+
+    underscore_indexes = find_indexes(text, "_")
+    index_array_to_delete = []
+
+    for index in range(len(underscore_indexes)):
+        if underscore_indexes[index] + 1 < len(text) - 1 and text[underscore_indexes[index] + 1] == '_':
+            opening_bracket_indexes = find_indexes(text[underscore_indexes[index] + 2], "(")
+            if not opening_bracket_indexes or not opening_bracket_indexes[0] <= 2 or text[underscore_indexes[index]] == '_':
+                index_array_to_delete.append(underscore_indexes[index] + 1)
+
+    index_array_to_delete.reverse()
+
+    for index in range(len(index_array_to_delete)):
+        text.pop(index_array_to_delete[index])
+
     return text
 
 
@@ -109,10 +137,10 @@ def analyze_text(text_array):
         if should_skip_next_counter == 0:
             step_data = find_text_corresponding_to_underscores(text_array, index_array, index)
             should_skip_next_counter = step_data[0]
-            data.append(step_data[1])
+            print(step_data[0])
+            data.append(Data(step_data[1], text_array[index_array[index]]).data_array)
         else:
             should_skip_next_counter -= 1
-
     return data
 
 
@@ -136,38 +164,38 @@ def find_indexes(data, symbol):
 def find_text_corresponding_to_underscores(text_array, index_array, index):
     corresponding_texts_array = []
     should_skip_next_lines_counter = 0
-    should_skip_next_underscores_counter = 0
     underscore_in_line_index_array = find_indexes(text_array[index_array[index]], '_')
-    print(index, text_array[index_array[index]], text_array[index_array[index] + 1])
 
     if len(underscore_in_line_index_array) == 1:
-        right_data = search_right(text_array, index_array, index)
-        should_skip_next_lines_counter += right_data[0]
-        corresponding_texts_array = right_data[2]
-        return [should_skip_next_lines_counter, corresponding_texts_array]
+        down_data = search_down(text_array, index_array, index)
+        should_skip_next_lines_counter += down_data[0]
 
-    for underscore_index in underscore_in_line_index_array:
-        if should_skip_next_underscores_counter > 0:
-            should_skip_next_underscores_counter -= 1
-            continue
+        if len(down_data[1]) > 0:
+            corresponding_texts_array = down_data[1]
+            return [should_skip_next_lines_counter, [corresponding_texts_array]]
 
-        left_option = search_left(text_array, index_array, index, underscore_index)
-        should_skip_next_underscores_counter = left_option[0]
-        corresponding_texts_array.append(left_option[1])
+    up_option = search_current_line_and_above(text_array, index_array, index, underscore_in_line_index_array)
+
+    if up_option:
+        if type(up_option) == list:
+            corresponding_texts_array.extend(up_option)
+        else:
+            corresponding_texts_array.append(up_option)
 
     return [should_skip_next_lines_counter, corresponding_texts_array]
 
 
-def search_right(text_array, index_array, index):
+def search_down(text_array, index_array, index):
     should_skip_next_lines_counter = 0
-    should_skip_next_underscores_counter = 0
     corresponding_text = ''
 
-    if index < len(text_array) - 1:
+    if index < len(text_array):
         # in case corresponding text takes multiple rows we should consider it as one piece
-        opening_brackets_count = len(find_indexes(text_array[index_array[index] + 1], "("))
+        opening_bracket_indexes = find_indexes(text_array[index_array[index] + 1], "(")
+        opening_brackets_count = len(opening_bracket_indexes)
 
-        if opening_brackets_count:
+        # checking if there is at least one opening bracket near the start of the line
+        if opening_brackets_count and opening_bracket_indexes[0] <= 2:
             closing_brackets_count = len(find_indexes(text_array[index_array[index] + 1], ")"))
 
             if opening_brackets_count != closing_brackets_count:
@@ -176,8 +204,11 @@ def search_right(text_array, index_array, index):
                 )
                 should_skip_next_lines_counter = processed_data[0]
                 corresponding_text = processed_data[1]
+            else:
+                corresponding_text = text_array[index_array[index] + 1]
+                corresponding_text = corresponding_text[1:len(corresponding_text) - 1]
 
-    return [should_skip_next_lines_counter, should_skip_next_underscores_counter, corresponding_text]
+    return [should_skip_next_lines_counter, corresponding_text]
 
 
 def process_lines_with_multiline_corresponding_text(
@@ -187,28 +218,130 @@ def process_lines_with_multiline_corresponding_text(
         opening_brackets_count,
         closing_brackets_count
 ):
-    increment = 1
-    should_skip_next_lines_counter = 1
-    corresponding_text = text_array[index_array[index] + 1]
+    should_skip_next_lines_counter = 0
+    current_index = index_array[index] + 1
+    corresponding_text = text_array[current_index]
 
     while opening_brackets_count != closing_brackets_count:
-        opening_brackets_count += len(find_indexes(text_array[index_array[index] + increment + 1], "("))
-        closing_brackets_count += len(find_indexes(text_array[index_array[index] + increment + 1], ")"))
-        corresponding_text += text_array[index_array[index] + increment + 1]
-        increment += 1
-        if '_' in text_array[index_array[index] + increment + 1]:
+        opening_brackets_count += len(find_indexes(text_array[current_index + 1], "("))
+        closing_brackets_count += len(find_indexes(text_array[current_index + 1], ")"))
+        corresponding_text += text_array[current_index + 1]
+        current_index += 1
+        if '_' in text_array[current_index]:
             should_skip_next_lines_counter += 1
 
     # trimming text from starting ( and from ending ) and removing underscores
-    corresponding_text = corresponding_text[1:len(corresponding_text) - 2].replace("_", "")
+    corresponding_text = corresponding_text[1:len(corresponding_text) - 1].replace("_", "")
+
     return [should_skip_next_lines_counter, corresponding_text]
 
 
-def search_left(text_array, index_array, index, underscore_index):
-    corresponding_text = ''
+def search_current_line_and_above(text_array, index_array, index, underscore_in_line_index_array):
+    corresponding_text = []
     should_skip_next_underscores_counter = 0
+    current_line = text_array[index_array[index]]
+    # which data has already been processed
+    last_index_of_processed_info = 0
 
-    return [should_skip_next_underscores_counter, corresponding_text]
+    for underscore_index in range(len(underscore_in_line_index_array)):
+        if should_skip_next_underscores_counter > 0:
+            should_skip_next_underscores_counter -= 1
+            continue
+
+        if len(underscore_in_line_index_array) == 1 \
+                and len(current_line[underscore_in_line_index_array[underscore_index]:len(current_line)]) <= 2:
+            return get_corresponding_text_from_left_and_above(
+                text_array, index_array, index, underscore_in_line_index_array, underscore_index
+            )
+
+        date_data_option = check_for_date_data(current_line, underscore_index, underscore_in_line_index_array)
+        should_skip_next_underscores_counter = date_data_option[0]
+
+        if date_data_option[2] > 0:
+            last_index_of_processed_info = date_data_option[2]
+
+        if date_data_option[1]:
+            corresponding_text.append(date_data_option[1])
+        elif last_index_of_processed_info > underscore_in_line_index_array[underscore_index - 1]:
+            text_option = current_line[last_index_of_processed_info:underscore_in_line_index_array[underscore_index]].strip()
+            corresponding_text.append(text_option)
+        else:
+            text_option = current_line[underscore_in_line_index_array[underscore_index - 1]:underscore_in_line_index_array[underscore_index]].strip()
+            corresponding_text.append(text_option)
+
+    return corresponding_text
+
+
+def get_corresponding_text_from_left_and_above(
+        text_array,
+        index_array,
+        index,
+        underscore_in_line_index_array,
+        underscore_index
+):
+    current_line = text_array[index_array[index]]
+    text_to_the_left = current_line[0:underscore_in_line_index_array[underscore_index]]
+    dot_indexes = find_indexes(text_to_the_left, '\.')
+    dot_indexes.reverse()
+
+    if dot_indexes:
+        for dot_index in dot_indexes:
+            if text_to_the_left[dot_index + 1].isupper():
+                return text_to_the_left[dot_index + 1:underscore_in_line_index_array[underscore_index]]
+
+    if text_to_the_left:
+        if text_to_the_left[0].isupper() or text_to_the_left[0].isnumeric():
+            return text_to_the_left.strip()
+        else:
+            return get_upper_lines_text(text_array, index_array[index]) + " " + text_to_the_left.strip()
+    else:
+        return get_upper_lines_text(text_array, index_array[index])
+
+
+def get_upper_lines_text(text_array, index):
+    upper_line = text_array[index - 1]
+    dot_indexes_upper_line = find_indexes(upper_line, '\.')
+    for dot_index in dot_indexes_upper_line:
+        if upper_line[dot_index + 1].isupper():
+            return upper_line[dot_index + 1:len(upper_line)]
+
+    if upper_line[0].isupper() or upper_line[0].isnumeric():
+        return upper_line
+
+    return get_upper_lines_text(text_array, index - 1) + " " + upper_line.strip()
+
+
+def check_for_date_data(current_line, underscore_index, underscore_in_line_index_array):
+    should_skip_next_underscores_counter = 0
+    date_data = ''
+    last_index_of_processed_info = -1
+    text_to_the_right = current_line[underscore_in_line_index_array[underscore_index]:len(current_line)]
+
+    date_sign_indexes = find_indexes(text_to_the_right, "р\.")
+    # print(text_to_the_right, date_sign_indexes and date_sign_indexes[0] <= 10)
+    if date_sign_indexes and date_sign_indexes[0] <= 10:
+        text_for_date = text_to_the_right[0:date_sign_indexes[0] + 2]
+        last_index_of_processed_info = underscore_in_line_index_array[underscore_index] + date_sign_indexes[0] + 2
+        should_skip_next_underscores_counter = len(find_indexes(text_for_date, "_")) - 1
+        return [should_skip_next_underscores_counter, "дата", last_index_of_processed_info]
+
+    date_sign_indexes = find_indexes(text_to_the_right, "року")
+
+    if date_sign_indexes and date_sign_indexes[0] <= 12:
+        text_for_date = text_to_the_right[0:date_sign_indexes[0] + 4]
+        last_index_of_processed_info = underscore_in_line_index_array[underscore_index] + date_sign_indexes[0] + 4
+        should_skip_next_underscores_counter = len(find_indexes(text_for_date, "_")) - 1
+        return [should_skip_next_underscores_counter, "дата", last_index_of_processed_info]
+
+    date_sign_indexes = find_indexes(text_to_the_right, "рік")
+
+    if date_sign_indexes and date_sign_indexes[0] <= 10:
+        text_for_date = text_to_the_right[0:date_sign_indexes[0] + 3]
+        last_index_of_processed_info = underscore_in_line_index_array[underscore_index] + date_sign_indexes[0] + 3
+        should_skip_next_underscores_counter = len(find_indexes(text_for_date, "_")) - 1
+        return [should_skip_next_underscores_counter, "дата", last_index_of_processed_info]
+
+    return [should_skip_next_underscores_counter, date_data, last_index_of_processed_info]
 
 
 if __name__ == "__main__":
