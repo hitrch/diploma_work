@@ -11,6 +11,7 @@ class Data:
 def main():
     text = read_file()
     prepared_data_for_classification = corresponding_text_finding_algorithm(text)
+    properties_in_document = find_properties_of_main_person_dictionary(prepared_data_for_classification)
 
 
 def read_file():
@@ -137,8 +138,7 @@ def analyze_text(text_array):
         if should_skip_next_counter == 0:
             step_data = find_text_corresponding_to_underscores(text_array, index_array, index)
             should_skip_next_counter = step_data[0]
-            print(step_data[0])
-            data.append(Data(step_data[1], text_array[index_array[index]]).data_array)
+            data.append(Data(step_data[1], text_array[index_array[index]]))
         else:
             should_skip_next_counter -= 1
     return data
@@ -342,6 +342,99 @@ def check_for_date_data(current_line, underscore_index, underscore_in_line_index
         return [should_skip_next_underscores_counter, "дата", last_index_of_processed_info]
 
     return [should_skip_next_underscores_counter, date_data, last_index_of_processed_info]
+
+
+def find_properties_of_main_person_dictionary(data):
+    found_properties = []
+
+    for item in data:
+        properties_in_item = find_properties_in_line(item)
+
+        if properties_in_item:
+            found_properties += properties_in_item
+
+    return found_properties
+
+
+def find_properties_in_line(item):
+    properties = []
+
+    for data in item.data_array:
+        match = re.search("альтернативне ім'я", data.lower())
+        if match:
+            properties.append("alternativeName")
+
+        match = re.search("прізвище, ім’я, по батькові", data.lower())
+        if match:
+            properties.append("fullName")
+
+        # match = re.search("ім’я", data.lower())
+        # flag = False
+        # for property in properties:
+        #     if property == "fullName":
+        #         flag = True
+        # flag = flag and match
+        # if flag:
+        #     properties.append("birthName")
+
+        first_word_pos = -1
+        second_word_pos = -1
+        words_array = data.lower().split(" ")
+        for i in range(len(words_array)):
+            if first_word_pos == -1 and words_array[i] == "дата":
+                first_word_pos = i
+            if second_word_pos == -1 and words_array[i] == "народження":
+                second_word_pos = i
+        if first_word_pos != -1 and second_word_pos != -1 and second_word_pos - first_word_pos <= 3:
+            properties.append("dateOfBirth")
+
+        first_word_pos = -1
+        second_word_pos = -1
+        words_array = data.lower().split(" ")
+        for i in range(len(words_array)):
+            if first_word_pos == -1 and words_array[i] == "дата":
+                first_word_pos = i
+            if second_word_pos == -1 and words_array[i] == "смерті":
+                second_word_pos = i
+        if first_word_pos != -1 and second_word_pos != -1 and second_word_pos - first_word_pos <= 3:
+            properties.append("dateOfDeath")
+
+        match = re.search("прізвище", data.lower())
+        flag = False
+        for property in properties:
+            if property == "fullName":
+                flag = True
+        flag = not flag and match
+        if flag:
+            properties.append("familyName")
+
+        match = re.search("стать", data.lower())
+        if match:
+            properties.append("gender")
+
+        match = re.search("ім’я", data.lower())
+        flag = False
+        for property in properties:
+            if property == "fullName":
+                flag = True
+        flag = not flag and match
+        if flag:
+            properties.append("givenName")
+
+        match = re.search("по матері", data.lower())
+        if match:
+            properties.append("matronymicName")
+
+        match = re.search("по батькові", data.lower())
+        flag = False
+        for property in properties:
+            if property == "fullName":
+                flag = True
+        flag = not flag and match
+        if flag:
+            properties.append("patronymicName")
+
+    return properties
 
 
 if __name__ == "__main__":
