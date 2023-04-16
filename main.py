@@ -13,6 +13,9 @@ def main():
     prepared_data_for_classification = corresponding_text_finding_algorithm(text)
     properties_in_document = find_properties_of_main_person_dictionary(prepared_data_for_classification)
 
+    # for item in properties_in_document:
+    #     print(item)
+
 
 def read_file():
     file = open('test-file.pdf', 'rb')
@@ -138,7 +141,8 @@ def analyze_text(text_array):
         if should_skip_next_counter == 0:
             step_data = find_text_corresponding_to_underscores(text_array, index_array, index)
             should_skip_next_counter = step_data[0]
-            data.append(Data(step_data[1], text_array[index_array[index]]))
+            # print(step_data[1], index_array[index])
+            data.append(Data(step_data[1], index_array[index] + 1))
         else:
             should_skip_next_counter -= 1
     return data
@@ -237,7 +241,7 @@ def process_lines_with_multiline_corresponding_text(
 
 
 def search_current_line_and_above(text_array, index_array, index, underscore_in_line_index_array):
-    corresponding_text = []
+    corresponding_text_array = []
     should_skip_next_underscores_counter = 0
     current_line = text_array[index_array[index]]
     # which data has already been processed
@@ -261,15 +265,15 @@ def search_current_line_and_above(text_array, index_array, index, underscore_in_
             last_index_of_processed_info = date_data_option[2]
 
         if date_data_option[1]:
-            corresponding_text.append(date_data_option[1])
+            corresponding_text_array.append(date_data_option[1])
         elif last_index_of_processed_info > underscore_in_line_index_array[underscore_index - 1]:
             text_option = current_line[last_index_of_processed_info:underscore_in_line_index_array[underscore_index]].strip()
-            corresponding_text.append(text_option)
+            corresponding_text_array.append(text_option)
         else:
             text_option = current_line[underscore_in_line_index_array[underscore_index - 1]:underscore_in_line_index_array[underscore_index]].strip()
-            corresponding_text.append(text_option)
+            corresponding_text_array.append(text_option)
 
-    return corresponding_text
+    return corresponding_text_array
 
 
 def get_corresponding_text_from_left_and_above(
@@ -362,11 +366,13 @@ def find_properties_in_line(item):
     for data in item.data_array:
         match = re.search("альтернативне ім'я", data.lower())
         if match:
-            properties.append("alternativeName")
+            properties.append(["alternativeName", item.corresponding_line])
+            continue
 
         match = re.search("прізвище, ім’я, по батькові", data.lower())
         if match:
-            properties.append("fullName")
+            properties.append(["fullName", item.corresponding_line])
+            continue
 
         # match = re.search("ім’я", data.lower())
         # flag = False
@@ -375,7 +381,7 @@ def find_properties_in_line(item):
         #         flag = True
         # flag = flag and match
         # if flag:
-        #     properties.append("birthName")
+        #     properties.append(["birthName", item.corresponding_line])
 
         first_word_pos = -1
         second_word_pos = -1
@@ -386,7 +392,8 @@ def find_properties_in_line(item):
             if second_word_pos == -1 and words_array[i] == "народження":
                 second_word_pos = i
         if first_word_pos != -1 and second_word_pos != -1 and second_word_pos - first_word_pos <= 3:
-            properties.append("dateOfBirth")
+            properties.append(["dateOfBirth", item.corresponding_line])
+            continue
 
         first_word_pos = -1
         second_word_pos = -1
@@ -397,7 +404,8 @@ def find_properties_in_line(item):
             if second_word_pos == -1 and words_array[i] == "смерті":
                 second_word_pos = i
         if first_word_pos != -1 and second_word_pos != -1 and second_word_pos - first_word_pos <= 3:
-            properties.append("dateOfDeath")
+            properties.append(["dateOfDeath", item.corresponding_line])
+            continue
 
         match = re.search("прізвище", data.lower())
         flag = False
@@ -406,11 +414,13 @@ def find_properties_in_line(item):
                 flag = True
         flag = not flag and match
         if flag:
-            properties.append("familyName")
+            properties.append(["familyName", item.corresponding_line])
+            continue
 
         match = re.search("стать", data.lower())
         if match:
-            properties.append("gender")
+            properties.append(["gender", item.corresponding_line])
+            continue
 
         match = re.search("ім’я", data.lower())
         flag = False
@@ -419,11 +429,13 @@ def find_properties_in_line(item):
                 flag = True
         flag = not flag and match
         if flag:
-            properties.append("givenName")
+            properties.append(["givenName", item.corresponding_line])
+            continue
 
         match = re.search("по матері", data.lower())
         if match:
-            properties.append("matronymicName")
+            properties.append(["matronymicName", item.corresponding_line])
+            continue
 
         match = re.search("по батькові", data.lower())
         flag = False
@@ -432,7 +444,8 @@ def find_properties_in_line(item):
                 flag = True
         flag = not flag and match
         if flag:
-            properties.append("patronymicName")
+            properties.append(["patronymicName", item.corresponding_line])
+            continue
 
     return properties
 
