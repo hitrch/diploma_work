@@ -1,5 +1,35 @@
+import json
+from io import BytesIO
+
 import pdfminer.high_level  # for reading pdf to string
 import re  # for finding occurrences in string
+
+from flask import Flask, make_response, request
+from flask_restful import Api, Resource, reqparse
+
+app = Flask(__name__)
+api = Api()
+
+
+class Main(Resource):
+    def post(self):
+        pdf_file = request.files['file']
+        data = main(pdf_file)
+        resp = make_response(json.dumps(data))
+        resp.headers['Access-Control-Allow-Origin'] = 'http://localhost:4200'
+        resp.headers['Access-Control-Allow-Headers'] = 'Origin, X-Requested-With, Content-Type, Accept'
+        resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, PATCH, PUT, DELETE, OPTIONS'
+        return resp
+
+    def options(self):
+        return {'Allow': '*'}, 200, \
+               {'Access-Control-Allow-Origin': '*',
+                "Access-Control-Allow-Headers": "*",
+                'Access-Control-Allow-Methods': '*'}
+
+
+api.add_resource(Main, "/analyze")
+api.init_app(app)
 
 
 class Data:
@@ -8,23 +38,27 @@ class Data:
         self.corresponding_line = corresponding_line
 
 
-def main():
-    text = read_file()
+def main(file):
+    if file:
+        text = pdfminer.high_level.extract_text(BytesIO(file.read()))
+    else:
+        text = read_file()
+
+    text = preprocess_text(text)
     prepared_data_for_classification = corresponding_text_finding_algorithm(text)
     properties_in_document = find_properties_of_main_person_dictionary(prepared_data_for_classification)
-
+    return [properties_in_document, text]
     # for item in properties_in_document:
     #     print(item)
 
 
 def read_file():
-    file = open('test-file.pdf', 'rb')
+    file = open("test-file.pdf", 'rb')
     return pdfminer.high_level.extract_text(file)
 
 
 def corresponding_text_finding_algorithm(text):
-    preprocessed_text_array = preprocess_text(text)
-    return analyze_text(preprocessed_text_array)
+    return analyze_text(text)
 
 
 def preprocess_text(text):
@@ -55,7 +89,8 @@ def shrink_lines_specified_for_same_data(text):
     for index in range(len(underscore_indexes)):
         if underscore_indexes[index] + 1 < len(text) - 1 and text[underscore_indexes[index] + 1] == '_':
             opening_bracket_indexes = find_indexes(text[underscore_indexes[index] + 2], "(")
-            if not opening_bracket_indexes or not opening_bracket_indexes[0] <= 2 or text[underscore_indexes[index]] == '_':
+            if not opening_bracket_indexes or not opening_bracket_indexes[0] <= 2 or text[
+                underscore_indexes[index]] == '_':
                 index_array_to_delete.append(underscore_indexes[index] + 1)
 
     index_array_to_delete.reverse()
@@ -267,10 +302,13 @@ def search_current_line_and_above(text_array, index_array, index, underscore_in_
         if date_data_option[1]:
             corresponding_text_array.append(date_data_option[1])
         elif last_index_of_processed_info > underscore_in_line_index_array[underscore_index - 1]:
-            text_option = current_line[last_index_of_processed_info:underscore_in_line_index_array[underscore_index]].strip()
+            text_option = current_line[
+                          last_index_of_processed_info:underscore_in_line_index_array[underscore_index]].strip()
             corresponding_text_array.append(text_option)
         else:
-            text_option = current_line[underscore_in_line_index_array[underscore_index - 1]:underscore_in_line_index_array[underscore_index]].strip()
+            text_option = current_line[
+                          underscore_in_line_index_array[underscore_index - 1]:underscore_in_line_index_array[
+                              underscore_index]].strip()
             corresponding_text_array.append(text_option)
 
     return corresponding_text_array
@@ -369,7 +407,7 @@ def find_properties_in_line(item):
             properties.append(["alternativeName", item.corresponding_line])
             continue
 
-        match = re.search("прізвище, ім’я, по батькові", data.lower())
+        match = re.search("прізвище, ім.я, по батькові", data.lower())
         if match:
             properties.append(["fullName", item.corresponding_line])
             continue
@@ -451,4 +489,4 @@ def find_properties_in_line(item):
 
 
 if __name__ == "__main__":
-    main()
+    app.run(port=3000, host="localhost")
